@@ -1,10 +1,18 @@
-// FQBN esp32:esp32:featheresp32
-
+//
+// Board FQBN esp32:esp32:featheresp32
+// dependancies
+//  * Adafruit_SSD1306
+//  * RTClib https://adafruit.github.io/RTClib/html/index.html
+//  * ADS1115_WE https://github.com/wollewald/ADS1115_WE
 #include <SPI.h>
 #include <Wire.h>
 #include <RTClib.h>
+#include<ADS1115_WE.h>  // https://github.com/wollewald/ADS1115_WE
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+
+#define I2C_ADDRESS_ADS1115 0x48
+#define I2C_ADDRESS_SSD1306 0x3C
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -15,6 +23,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 RTC_Millis rtc;
 
+ADS1115_WE adc = ADS1115_WE(I2C_ADDRESS_ADS1115);
+
 void setup() {
   // initialize serial communication at 115200 bits per second:
   Serial.begin(115200);
@@ -24,7 +34,7 @@ void setup() {
 
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   Serial.printf("Screen init\n");
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+  if(!display.begin(SSD1306_SWITCHCAPVCC, I2C_ADDRESS_SSD1306)) {
     Serial.println(F("SSD1306 allocation failed"));
     for(;;); // Don't proceed, loop forever
   }
@@ -45,6 +55,16 @@ void setup() {
   //  // January 21, 2014 at 3am you would call:
   //  // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
   //}
+
+  if(!adc.init()){
+    Serial.println("Couldn't find ADS1115");
+    for(;;); // Don't proceed, loop forever
+  }
+  adc.setVoltageRange_mV(ADS1115_RANGE_6144);
+  adc.setCompareChannels(ADS1115_COMP_0_1); // differential comp A0/A1
+  adc.setConvRate(ADS1115_128_SPS);
+  // adc.setMeasureMode(ADS1115_CONTINUOUS);
+  adc.setMeasureMode(ADS1115_SINGLE);
 
   display.clearDisplay();
   display.setTextSize(1);      // Normal 1:1 pixel scale
@@ -78,6 +98,27 @@ void loop() {
   display.print("RTC ");
   display.println(buf2);
 
+  adc.setCompareChannels(ADS1115_COMP_0_1);
+  adc.startSingleMeasurement();
+  while(adc.isBusy()){ }
+
+  int a2d_voltage = adc.getResult_mV();
+  Serial.printf("A2D A01 diff voltage %dmV\n", a2d_voltage);
+  display.print("A2D A01 ");
+  display.print(a2d_voltage);
+  display.println("mV");
+
+  adc.setCompareChannels(ADS1115_COMP_1_GND);
+  adc.startSingleMeasurement();
+  while(adc.isBusy()){ }
+
+  int a2d_ref = adc.getResult_mV();
+  Serial.printf("A2D A1 ref voltage %dmV\n", a2d_ref);
+  display.print("A2D A1  ");
+  display.print(a2d_ref);
+  display.println("mV");
+
   display.display();
   delay(200);  // delay in between reads for clear read from serial
 }
+
